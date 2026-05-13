@@ -10,11 +10,23 @@
             import { BearerTokenProvider } from "./BearerTokenProvider.js"
             import { AuthorizationCodeFlowUI } from "./AuthorizationCodeFlowUI.js"
 
-            /* Page functionality */
+            /* Page functionality: Buttons */
             document.addEventListener("DOMContentLoaded", () =>
                 document.querySelectorAll("button").forEach(button =>
                     button.addEventListener("click", async e =>
                         await fetch(e.target.value))))
+
+            /* Page functionality: Onload */
+            document.addEventListener("DOMContentLoaded", async () => {
+                await fetch("https://echo.free.beeceptor.com/")
+                // await fetch("https://langsamu.solidcommunity.net/settings/")
+                await fetch("https://storage.inrupt.com/d5e2efbd-1dd6-4c45-b6a3-e61a05bb9d49/")
+                await fetch("https://langsamu.datapod.igrant.io/settings/")
+                await fetch("https://langsamu.solidweb.app/settings/")
+                await fetch("https://teamid.live/langsamu/settings/")
+                await fetch("https://langsamu.solidweb.org/settings/")
+                // await fetch("http://localhost:3000/a/profile/")
+            })
 
             /* Reactive fetch infrastructure */
             const ui = new AuthorizationCodeFlowUI
