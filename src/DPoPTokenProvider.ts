@@ -55,6 +55,7 @@ export class DPoPTokenProvider implements TokenProvider {
         const dpop = oauth.DPoP({}, dpopKey)
 
         const codeVerifier = oauth.generateRandomCodeVerifier()
+        const nonce = oauth.generateRandomNonce()
         const state = oauth.generateRandomState()
 
         // TODO: support prompt=none
@@ -65,6 +66,7 @@ export class DPoPTokenProvider implements TokenProvider {
         authorizationUrl.searchParams.set("scope", "openid webid")
         // authorizationUrl.searchParams.set("prompt", "consent")
         authorizationUrl.searchParams.set("state", state)
+        authorizationUrl.searchParams.set("nonce", nonce)
 
         if (authorizationServer.code_challenge_methods_supported !== undefined) {
             if (authorizationServer.code_challenge_methods_supported.includes("S256")) {
@@ -76,21 +78,12 @@ export class DPoPTokenProvider implements TokenProvider {
             }
         }
 
-        // igrant (nss) seems to not return nonce
-        // let nonce
-        // if (authorizationServer.code_challenge_methods_supported?.includes("S256") !== true) {
-        //     nonce = oauth.generateRandomNonce()
-        //     authorizationUrl.searchParams.set("nonce", nonce)
-        // }
-
         const authorizationCodeResponse = await this.#getCode(authorizationUrl)
         const authorizationCodeParams = oauth.validateAuthResponse(authorizationServer, clientRegistration, new URL(authorizationCodeResponse), state)
 
         const tokenResponse = await oauth.authorizationCodeGrantRequest(authorizationServer, clientRegistration, this.getClientAuth(authorizationServer.issuer, clientRegistration), authorizationCodeParams, callbackUri, authorizationServer.code_challenge_methods_supported !== undefined ? codeVerifier : oauth.nopkce, {DPoP: dpop})
 
-        // jwt nonce missing in igrant
-        // const tokenResult = await oauth.processAuthorizationCodeResponse(authorizationServer, clientRegistration, tokenResponse, {expectedNonce: nonce})
-        const tokenResult = await oauth.processAuthorizationCodeResponse(authorizationServer, clientRegistration, tokenResponse)
+        const tokenResult = await oauth.processAuthorizationCodeResponse(authorizationServer, clientRegistration, tokenResponse, {expectedNonce: this.nonceVerificationOverride(authorizationServer.issuer, nonce)})
 
         const headers = new Headers(request.headers)
 
@@ -109,6 +102,15 @@ export class DPoPTokenProvider implements TokenProvider {
         }
 
         return oauth.None()
+    }
+
+    private nonceVerificationOverride(issuer: string, nonce: string): string | typeof oauth.expectNoNonce {
+        // TODO: Expose or configure or fingerprint NSS
+        if (issuer === "https://datapod.igrant.io" || issuer === "https://solidweb.org") {
+            return oauth.expectNoNonce
+        }
+
+        return nonce
     }
 }
 
