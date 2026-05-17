@@ -58,13 +58,12 @@ export class DPoPTokenProvider implements TokenProvider {
         const nonce = oauth.generateRandomNonce()
         const state = oauth.generateRandomState()
 
-        // TODO: support prompt=none
         const authorizationUrl = new URL(authorizationServer.authorization_endpoint!)
         authorizationUrl.searchParams.set("client_id", clientRegistration.client_id)
         authorizationUrl.searchParams.set("redirect_uri", registeredRedirectUri!)
         authorizationUrl.searchParams.set("response_type", registeredResponseType!)
         authorizationUrl.searchParams.set("scope", "openid webid")
-        // authorizationUrl.searchParams.set("prompt", "consent")
+        authorizationUrl.searchParams.set("prompt", "none")
         authorizationUrl.searchParams.set("state", state)
         authorizationUrl.searchParams.set("nonce", nonce)
 
@@ -79,7 +78,27 @@ export class DPoPTokenProvider implements TokenProvider {
         }
 
         const authorizationCodeResponse = await this.#getCode(authorizationUrl)
-        const authorizationCodeParams = oauth.validateAuthResponse(authorizationServer, clientRegistration, new URL(authorizationCodeResponse), state)
+
+        let authorizationCodeParams
+        try {
+            authorizationCodeParams = oauth.validateAuthResponse(authorizationServer, clientRegistration, new URL(authorizationCodeResponse), state)
+        } catch (e) {
+            if (
+                // Proper way
+                e instanceof oauth.AuthorizationResponseError && (e.error === "interaction_required" || e.error === "consent_required" || e.error === "login_required") ||
+
+                // Workaround ESS not returning `iss` in error response
+                isEssMissingIssInteractionNeeded(e)
+            ) {
+                console.debug("Authorization server requires user interaction, retrying without prompt")
+
+                authorizationUrl.searchParams.delete("prompt")
+                const authorizationCodeResponse = await this.#getCode(authorizationUrl)
+                authorizationCodeParams = oauth.validateAuthResponse(authorizationServer, clientRegistration, new URL(authorizationCodeResponse), state)
+            } else {
+                throw e
+            }
+        }
 
         const tokenResponse = await oauth.authorizationCodeGrantRequest(authorizationServer, clientRegistration, this.getClientAuth(authorizationServer.issuer, clientRegistration), authorizationCodeParams, callbackUri, authorizationServer.code_challenge_methods_supported !== undefined ? codeVerifier : oauth.nopkce, {DPoP: dpop})
 
@@ -114,6 +133,13 @@ export class DPoPTokenProvider implements TokenProvider {
     }
 }
 
+function isEssMissingIssInteractionNeeded(e: unknown) {
+    try {
+        return ((((e as oauth.OperationProcessingError).cause as any).parameters) as URLSearchParams).get("error") === "interaction_required"
+    } catch {
+        return false
+    }
+}
 
 /**
  * A variation of the original from oauth4webapi that does not url encode Id and secret.
